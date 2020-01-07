@@ -9,13 +9,13 @@ type FileMeta struct {
 	UploadAt string
 }
 
-var FileMetas  map[string]FileMeta
+var FileMetas map[string]FileMeta
 
-func init()  {
+func init() {
 	FileMetas = make(map[string]FileMeta)
 }
 
-func UpdateFilemetas(fileMeta FileMeta)  {
+func UpdateFilemetas(fileMeta FileMeta) {
 	FileMetas[fileMeta.FileSha1] = fileMeta
 }
 
@@ -24,7 +24,7 @@ func GetFileMeta(hash string) FileMeta {
 }
 
 func DeleteFile(hash string) bool {
-	_,ok := FileMetas[hash]
-	delete(FileMetas,hash)
+	_, ok := FileMetas[hash]
+	delete(FileMetas, hash)
 	return ok
 }

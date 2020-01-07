@@ -9,22 +9,23 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+	"uploadSystem/db"
 	"uploadSystem/meta"
 	"uploadSystem/util"
 )
 
-func UploadHandle(writer http.ResponseWriter, r *http.Request){
+func UploadHandle(writer http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 		abs, _ := filepath.Abs("./static/view/index.html")
 		file, err := ioutil.ReadFile(abs)
 		if err != nil {
-			log.Printf("文件读取出错 %v \n",err)
+			log.Printf("文件读取出错 %v \n", err)
 		}
 		io.WriteString(writer, string(file))
 	} else if r.Method == "POST" {
 		file, header, err := r.FormFile("file")
 		if err != nil {
-			log.Printf("上传的文件读取出错 %v \n",err)
+			log.Printf("上传的文件读取出错 %v \n", err)
 			writer.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -33,29 +34,36 @@ func UploadHandle(writer http.ResponseWriter, r *http.Request){
 			FileSha1: "",
 			FileName: header.Filename,
 			FileSize: 0,
-			Location:"./upload/" + header.Filename,
-			UploadAt:time.Now().Format("2006-01-02 15:04:15"),
+			Location: "./upload/" + header.Filename,
+			UploadAt: time.Now().Format("2006-01-02 15:04:15"),
 		}
 		defer file.Close()
 		create, err := os.Create("./upload/" + header.Filename)
 		defer create.Close()
 		fileMeta.FileSize, err = io.Copy(create, file)
-		create.Seek(0,0)
+		create.Seek(0, 0)
 		fileMeta.FileSha1 = util.FileSha1(create)
 		if err != nil {
 			panic(err)
 		}
 		meta.UpdateFilemetas(fileMeta)
-		http.Redirect(writer,r,"upload/success",http.StatusFound)
+		finish := db.OnfileFinish(fileMeta)
+		if finish {
+			http.Redirect(writer, r, "upload/success", http.StatusFound)
+		} else {
+			writer.WriteHeader(http.StatusBadRequest)
+			writer.Write([]byte("存储数据库出错"))
+		}
+
 	}
 }
 
-func UploadSuccess(writer http.ResponseWriter, r *http.Request)  {
-	io.WriteString(writer,"Upload Success !")
+func UploadSuccess(writer http.ResponseWriter, r *http.Request) {
+	io.WriteString(writer, "Upload Success !")
 }
 
 //根据hash来找文件
-func GetFileHandler(w http.ResponseWriter,r *http.Request){
+func GetFileHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	hash := r.Form["filehash"][0]
 	fileMeta := meta.GetFileMeta(hash)
@@ -69,30 +77,30 @@ func GetFileHandler(w http.ResponseWriter,r *http.Request){
 }
 
 // todo:下载
-func Download(w http.ResponseWriter,r *http.Request)  {
+func Download(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	hash := r.Form.Get("filehash")
 	fileMeta := meta.GetFileMeta(hash)
 	open, err := os.Open(fileMeta.Location)
 	if err != nil {
-		log.Println("地址错误,",fileMeta.Location)
+		log.Println("地址错误,", fileMeta.Location)
 		w.WriteHeader(http.StatusBadRequest)
 	}
 	defer open.Close()
 	all, err := ioutil.ReadAll(open)
 	if err != nil {
-		log.Println("读取出错,",fileMeta.Location)
+		log.Println("读取出错,", fileMeta.Location)
 		w.WriteHeader(http.StatusBadRequest)
 	}
 
 	// TODO:设置头部
-	w.Header().Set("Content-Type","application/octect-stream")
-	w.Header().Set("content-disposition","attachment;filename=\""+fileMeta.FileName+"\"")
+	w.Header().Set("Content-Type", "application/octect-stream")
+	w.Header().Set("content-disposition", "attachment;filename=\""+fileMeta.FileName+"\"")
 	w.Write(all)
 }
 
 // 重命名文件
-func RenameFile(w http.ResponseWriter,r *http.Request) {
+func RenameFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -106,12 +114,12 @@ func RenameFile(w http.ResponseWriter,r *http.Request) {
 		return
 	}
 	filemeta := meta.FileMetas[hash]
-	os.Rename(filemeta.Location,"./upload/"+newName)
+	os.Rename(filemeta.Location, "./upload/"+newName)
 	filemeta.FileName = newName
-	filemeta.Location = "./upload/"+newName
+	filemeta.Location = "./upload/" + newName
 	meta.UpdateFilemetas(filemeta)
 
-	data,err := json.Marshal(filemeta)
+	data, err := json.Marshal(filemeta)
 	if err != nil {
 		panic(err)
 	}
@@ -121,7 +129,7 @@ func RenameFile(w http.ResponseWriter,r *http.Request) {
 }
 
 // 删除文件
-func DeleteFile(w http.ResponseWriter,r *http.Request){
+func DeleteFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "DELETE" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
