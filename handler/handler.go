@@ -9,11 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-	"uploadSystem/db"
 	"uploadSystem/meta"
 	"uploadSystem/util"
 )
 
+// 上传接口
 func UploadHandle(writer http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 		abs, _ := filepath.Abs("./static/view/index.html")
@@ -46,8 +46,9 @@ func UploadHandle(writer http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			panic(err)
 		}
-		meta.UpdateFilemetas(fileMeta)
-		finish := db.OnfileFinish(fileMeta)
+		//存入数据库
+		finish := fileMeta.UpdateFilemetas()
+
 		if finish {
 			http.Redirect(writer, r, "upload/success", http.StatusFound)
 		} else {
@@ -65,8 +66,8 @@ func UploadSuccess(writer http.ResponseWriter, r *http.Request) {
 //根据hash来找文件
 func GetFileHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
-	hash := r.Form["filehash"][0]
-	fileMeta := meta.GetFileMeta(hash)
+	FileMeta := &meta.FileMeta{}
+	fileMeta := FileMeta.GetFileMeta(r.Form.Get("filehash"))
 	marshal, err := json.Marshal(fileMeta)
 	if err != nil {
 		log.Println("转换出错")
@@ -79,8 +80,8 @@ func GetFileHandler(w http.ResponseWriter, r *http.Request) {
 // todo:下载
 func Download(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
-	hash := r.Form.Get("filehash")
-	fileMeta := meta.GetFileMeta(hash)
+	FileMeta := &meta.FileMeta{}
+	fileMeta := FileMeta.GetFileMeta(r.Form.Get("filehash"))
 	open, err := os.Open(fileMeta.Location)
 	if err != nil {
 		log.Println("地址错误,", fileMeta.Location)
@@ -113,11 +114,13 @@ func RenameFile(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-	filemeta := meta.FileMetas[hash]
+	filemeta := &meta.FileMeta{}
+	filemeta = filemeta.GetFileMeta(hash)
 	os.Rename(filemeta.Location, "./upload/"+newName)
 	filemeta.FileName = newName
 	filemeta.Location = "./upload/" + newName
-	meta.UpdateFilemetas(filemeta)
+	filemeta.UploadAt = time.Now().Format("2006-01-02 15:04:05")
+	filemeta.UpdateFilemetas()
 
 	data, err := json.Marshal(filemeta)
 	if err != nil {
@@ -135,11 +138,6 @@ func DeleteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.ParseForm()
-	hash := r.Form.Get("filehash")
-	ok := meta.DeleteFile(hash)
-	if !ok {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
+
 	w.WriteHeader(http.StatusOK)
 }
